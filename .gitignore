@@ -1,0 +1,8 @@
+build/
+ignore/
+test/
+.DS_Store
+iwyu.out
+[Dd]esktop.ini
+*.profraw
+*.profdata
