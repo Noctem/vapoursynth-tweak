@@ -8,25 +8,27 @@
 
 static double radians(double degrees) { return degrees * M_PI / 180.0; }
 
-typedef struct adjustData {
+typedef struct tweakData {
     VSNodeRef *node;
     const VSVideoInfo *vi;
     int adjustLuma, chromaHeight, chromaStride, chromaWidth, height, stride,
         width;
     uint8_t lut[256];
-} adjustData;
+} tweakData;
 
-static void VS_CC adjustFree(void *instanceData, VSCore *core,
-                             const VSAPI *vsapi) {
-    adjustData *d = (adjustData *)(instanceData);
+static void VS_CC tweakFree(void *instanceData, VSCore *core,
+                            const VSAPI *vsapi) {
+    tweakData *d = (tweakData *)(instanceData);
     vsapi->freeNode(d->node);
     free(d);
 }
 
-static const VSFrameRef *VS_CC adjustGetFrame(
-    int n, int activationReason, void **instanceData, void **frameData,
-    VSFrameContext *frameCtx, VSCore *core, const VSAPI *vsapi) {
-    adjustData *d = (adjustData *)*instanceData;
+static const VSFrameRef *VS_CC tweakGetFrame(int n, int activationReason,
+                                             void **instanceData,
+                                             void **frameData,
+                                             VSFrameContext *frameCtx,
+                                             VSCore *core, const VSAPI *vsapi) {
+    tweakData *d = (tweakData *)*instanceData;
 
     if (activationReason == arInitial) {
         vsapi->requestFrameFilter(n, d->node, frameCtx);
@@ -62,9 +64,9 @@ static const VSFrameRef *VS_CC adjustGetFrame(
     return NULL;
 }
 
-static void VS_CC adjustInit(VSMap *in, VSMap *out, void **instanceData,
-                             VSNode *node, VSCore *core, const VSAPI *vsapi) {
-    adjustData *d = (adjustData *)*instanceData;
+static void VS_CC tweakInit(VSMap *in, VSMap *out, void **instanceData,
+                            VSNode *node, VSCore *core, const VSAPI *vsapi) {
+    tweakData *d = (tweakData *)*instanceData;
     vsapi->setVideoInfo(d->vi, 1, node);
 }
 
@@ -74,7 +76,7 @@ static VSNodeRef *tweakChroma(VSNodeRef *node, double mult1, double mult2,
     char buf[128];
 
     if (std == NULL) {
-        vsapi->setError(out, "adjust: standard plugin not found");
+        vsapi->setError(out, "Tweak: standard plugin not found");
         return NULL;
     }
     VSMap *args = vsapi->createMap();
@@ -166,10 +168,10 @@ static VSNodeRef *tweakChroma(VSNodeRef *node, double mult1, double mult2,
     return tweaked;
 }
 
-static void VS_CC adjustCreate(const VSMap *in, VSMap *out, void *userData,
-                               VSCore *core, const VSAPI *vsapi) {
-    adjustData d;
-    adjustData *data;
+static void VS_CC tweakCreate(const VSMap *in, VSMap *out, void *userData,
+                              VSCore *core, const VSAPI *vsapi) {
+    tweakData d;
+    tweakData *data;
     int err;
 
     VSNodeRef *node = vsapi->propGetNode(in, "clip", 0, NULL);
@@ -244,16 +246,17 @@ static void VS_CC adjustCreate(const VSMap *in, VSMap *out, void *userData,
     data = malloc(sizeof(d));
     *data = d;
 
-    vsapi->createFilter(in, out, "adjust", adjustInit, adjustGetFrame,
-                        adjustFree, fmParallel, 0, data, core);
+    vsapi->createFilter(in, out, "Tweak", tweakInit, tweakGetFrame, tweakFree,
+                        fmParallel, 0, data, core);
 }
 
 VS_EXTERNAL_API(void)
 VapourSynthPluginInit(VSConfigPlugin configFunc,
                       VSRegisterFunction registerFunc, VSPlugin *plugin) {
-    configFunc("xyz.noctem.adjust", "adjust", "Filter for adjusting",
-               VAPOURSYNTH_API_VERSION, 1, plugin);
-    registerFunc("adjust",
+    configFunc("xyz.noctem.tweak", "tweak",
+               "Filter for luma and chroma adjustment", VAPOURSYNTH_API_VERSION,
+               1, plugin);
+    registerFunc("Tweak",
                  "clip:clip;sat:float:opt;hue:float:opt;luma:float[]:opt",
-                 adjustCreate, NULL, plugin);
+                 tweakCreate, NULL, plugin);
 }
