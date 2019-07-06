@@ -16,11 +16,73 @@ typedef struct tweakData {
     uint8_t lut[256];
 } tweakData;
 
+typedef struct rgbData {
+    VSNodeRef *node;
+    const VSVideoInfo *vi;
+    int height, stride, width;
+    uint8_t rlut[256];
+    uint8_t glut[256];
+    uint8_t blut[256];
+} rgbData;
+
+static void VS_CC rgbFree(void *instanceData, VSCore *core,
+                          const VSAPI *vsapi) {
+    rgbData *d = (rgbData *)(instanceData);
+    vsapi->freeNode(d->node);
+    free(d);
+}
+
 static void VS_CC tweakFree(void *instanceData, VSCore *core,
                             const VSAPI *vsapi) {
     tweakData *d = (tweakData *)(instanceData);
     vsapi->freeNode(d->node);
     free(d);
+}
+
+static const VSFrameRef *VS_CC rgbGetFrame(int n, int activationReason,
+                                           void **instanceData,
+                                           void **frameData,
+                                           VSFrameContext *frameCtx,
+                                           VSCore *core, const VSAPI *vsapi) {
+    rgbData *d = (rgbData *)*instanceData;
+
+    if (activationReason == arInitial) {
+        vsapi->requestFrameFilter(n, d->node, frameCtx);
+    } else if (activationReason == arAllFramesReady) {
+        const VSFrameRef *src = vsapi->getFrameFilter(n, d->node, frameCtx);
+        VSFrameRef *dst =
+            vsapi->newVideoFrame(d->vi->format, d->width, d->height, src, core);
+
+        const uint8_t *rsrc = vsapi->getReadPtr(src, 0);
+        uint8_t *rdst = vsapi->getWritePtr(dst, 0);
+        for (int y = 0; y < d->height; y++) {
+            for (int x = 0; x < d->width; x++) rdst[x] = d->rlut[rsrc[x]];
+            rsrc += d->stride;
+            rdst += d->stride;
+        }
+
+        const uint8_t *gsrc = vsapi->getReadPtr(src, 1);
+        uint8_t *gdst = vsapi->getWritePtr(dst, 1);
+        for (int y = 0; y < d->height; y++) {
+            for (int x = 0; x < d->width; x++) gdst[x] = d->glut[gsrc[x]];
+            gsrc += d->stride;
+            gdst += d->stride;
+        }
+
+        const uint8_t *bsrc = vsapi->getReadPtr(src, 2);
+        uint8_t *bdst = vsapi->getWritePtr(dst, 2);
+        for (int y = 0; y < d->height; y++) {
+            for (int x = 0; x < d->width; x++) bdst[x] = d->blut[bsrc[x]];
+            bsrc += d->stride;
+            bdst += d->stride;
+        }
+
+        vsapi->freeFrame(src);
+
+        return dst;
+    }
+
+    return NULL;
 }
 
 static const VSFrameRef *VS_CC tweakGetFrame(int n, int activationReason,
@@ -62,6 +124,12 @@ static const VSFrameRef *VS_CC tweakGetFrame(int n, int activationReason,
     }
 
     return NULL;
+}
+
+static void VS_CC rgbInit(VSMap *in, VSMap *out, void **instanceData,
+                          VSNode *node, VSCore *core, const VSAPI *vsapi) {
+    rgbData *d = (rgbData *)*instanceData;
+    vsapi->setVideoInfo(d->vi, 1, node);
 }
 
 static void VS_CC tweakInit(VSMap *in, VSMap *out, void **instanceData,
@@ -250,6 +318,66 @@ static void VS_CC tweakCreate(const VSMap *in, VSMap *out, void *userData,
                         fmParallel, 0, data, core);
 }
 
+static void VS_CC rgbCreate(const VSMap *in, VSMap *out, void *userData,
+                            VSCore *core, const VSAPI *vsapi) {
+    rgbData d;
+    rgbData *data;
+    int err;
+
+    VSNodeRef *node = vsapi->propGetNode(in, "clip", 0, NULL);
+
+    if (vsapi->getVideoInfo(node)->format->colorFamily != cmRGB) {
+        VSMap *args = vsapi->createMap();
+        VSPlugin *resize = vsapi->getPluginById("com.vapoursynth.resize", core);
+        vsapi->propSetNode(args, "clip", node, paReplace);
+        vsapi->freeNode(node);
+        vsapi->propSetInt(args, "format", pfRGB24, paReplace);
+        vsapi->propSetInt(args, "matrix_in", 1, paReplace);
+        VSMap *image = vsapi->invoke(resize, "Spline36", args);
+        vsapi->freeMap(args);
+        if (vsapi->getError(image)) {
+            vsapi->setError(out, vsapi->getError(image));
+            vsapi->freeMap(image);
+            return;
+        }
+        d.node = vsapi->propGetNode(image, "clip", 0, NULL);
+        vsapi->freeMap(image);
+    } else
+        d.node = node;
+
+    d.vi = vsapi->getVideoInfo(d.node);
+
+    const VSFrameRef *frame = vsapi->getFrame(0, d.node, NULL, 0);
+    d.stride = vsapi->getStride(frame, 0);
+    vsapi->freeFrame(frame);
+
+    d.height = d.vi->height;
+    d.width = d.vi->width;
+
+    double red = vsapi->propGetFloat(in, "red", 0, &err);
+    if (err) red = 1.0;
+    double green = vsapi->propGetFloat(in, "green", 0, &err);
+    if (err) green = 1.0;
+    double blue = vsapi->propGetFloat(in, "blue", 0, &err);
+    if (err) blue = 1.0;
+
+    double val;
+    for (int i = 0; i < 256; i++) {
+        val = (i * red) + 0.5;
+        d.rlut[i] = (val < 255.0) ? ((val >= 1.0) ? (uint8_t)val : 0) : 255;
+        val = (i * green) + 0.5;
+        d.glut[i] = (val < 255.0) ? ((val >= 1.0) ? (uint8_t)val : 0) : 255;
+        val = (i * blue) + 0.5;
+        d.blut[i] = (val < 255.0) ? ((val >= 1.0) ? (uint8_t)val : 0) : 255;
+    }
+
+    data = malloc(sizeof(d));
+    *data = d;
+
+    vsapi->createFilter(in, out, "RGB", rgbInit, rgbGetFrame, rgbFree,
+                        fmParallel, 0, data, core);
+}
+
 VS_EXTERNAL_API(void)
 VapourSynthPluginInit(VSConfigPlugin configFunc,
                       VSRegisterFunction registerFunc, VSPlugin *plugin) {
@@ -257,6 +385,9 @@ VapourSynthPluginInit(VSConfigPlugin configFunc,
                "Filter for luma and chroma adjustment", VAPOURSYNTH_API_VERSION,
                1, plugin);
     registerFunc("Tweak",
-                 "clip:clip;sat:float:opt;hue:float:opt;luma:float[]:opt",
+                 "clip:clip;sat:float:opt;hue:float:opt;luma:float[]:opt;",
                  tweakCreate, NULL, plugin);
+    registerFunc("RGB",
+                 "clip:clip;red:float:opt;green:float:opt;blue:float:opt;",
+                 rgbCreate, NULL, plugin);
 }
