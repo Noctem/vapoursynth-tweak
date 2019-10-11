@@ -1,7 +1,7 @@
 project('tweak', 'c',
     default_options: ['buildtype=release', 'b_ndebug=if-release'],
     meson_version: '>=0.46.0',
-    version: '0.1')
+    version: '0.2')
 
 shared_module('tweak',
     sources: 'tweak.c',
