@@ -2,7 +2,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-
 #include <vapoursynth/VSHelper.h>
 #include <vapoursynth/VapourSynth.h>
 
@@ -289,10 +288,10 @@ static void VS_CC tweakCreate(const VSMap *in, VSMap *out, void *userData,
         double mult = 1.0 + (lumaAdjust[0] / 100.0);
         for (int i = 0; i < 256; i++) {
             val = (i * mult) + 0.5;
-            d.lut[i] = (val < 255.0) ? ((val >= 1.0) ? (uint8_t)val : 0) : 255;
+            d.lut[i] = (val < 255.0) ? (uint8_t)val : 255;
         }
     } else {
-        for (int i = 0; i < numLuma - 1; i++) {
+        for (int i = 0; i < numLuma; i++) {
             start = i * incr;
             if (i == numLuma - 1)
                 end = 255;
@@ -305,8 +304,7 @@ static void VS_CC tweakCreate(const VSMap *in, VSMap *out, void *userData,
 
             for (int j = start; j <= end; j++) {
                 val = ((a * j + b) * j) + 0.5;
-                d.lut[j] =
-                    (val < 255.0) ? ((val >= 1.0) ? (uint8_t)val : 0) : 255;
+                d.lut[j] = (val < 255.0) ? (uint8_t)val : 255;
             }
         }
     }
@@ -364,11 +362,11 @@ static void VS_CC rgbCreate(const VSMap *in, VSMap *out, void *userData,
     double val;
     for (int i = 0; i < 256; i++) {
         val = (i * red) + 0.5;
-        d.rlut[i] = (val < 255.0) ? ((val >= 1.0) ? (uint8_t)val : 0) : 255;
+        d.rlut[i] = (val < 255.0) ? (uint8_t)val : 255;
         val = (i * green) + 0.5;
-        d.glut[i] = (val < 255.0) ? ((val >= 1.0) ? (uint8_t)val : 0) : 255;
+        d.glut[i] = (val < 255.0) ? (uint8_t)val : 255;
         val = (i * blue) + 0.5;
-        d.blut[i] = (val < 255.0) ? ((val >= 1.0) ? (uint8_t)val : 0) : 255;
+        d.blut[i] = (val < 255.0) ? (uint8_t)val : 255;
     }
 
     data = malloc(sizeof(d));
